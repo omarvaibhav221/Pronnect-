@@ -1,0 +1,151 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  PM
+  DEVELOPER
+}
+
+enum TaskStatus {
+  TODO
+  IN_PROGRESS
+  IN_REVIEW
+  DONE
+}
+
+enum TaskPriority {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum NotificationType {
+  TASK_ASSIGNED
+  TASK_IN_REVIEW
+  TASK_OVERDUE
+}
+
+model User {
+  id            String    @id @default(uuid())
+  email         String    @unique
+  passwordHash  String
+  name          String
+  role          Role
+  createdAt     DateTime  @default(now())
+
+  projectsOwned Project[]      @relation("PMProjects")
+  tasksAssigned Task[]         @relation("AssignedTasks")
+  activityLogs  ActivityLog[]
+  notifications Notification[]
+  refreshTokens RefreshToken[]
+
+  @@index([role])
+}
+
+// Refresh tokens are stored server-side so any single token can be revoked
+// (logout, rotation, compromise) without invalidating every session.
+model RefreshToken {
+  id        String   @id @default(uuid())
+  token     String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  revoked   Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+model Client {
+  id        String    @id @default(uuid())
+  name      String
+  createdAt DateTime  @default(now())
+  projects  Project[]
+}
+
+model Project {
+  id        String   @id @default(uuid())
+  name      String
+  clientId  String
+  client    Client   @relation(fields: [clientId], references: [id])
+  pmId      String
+  pm        User     @relation("PMProjects", fields: [pmId], references: [id])
+  createdAt DateTime @default(now())
+
+  tasks        Task[]
+  activityLogs ActivityLog[]
+
+  @@index([pmId])
+  @@index([clientId])
+}
+
+model Task {
+  id           String       @id @default(uuid())
+  projectId    String
+  project      Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  title        String
+  description  String       @default("")
+  assignedToId String?
+  assignedTo   User?        @relation("AssignedTasks", fields: [assignedToId], references: [id])
+  status       TaskStatus   @default(TODO)
+  priority     TaskPriority @default(MEDIUM)
+  dueDate      DateTime?
+  isOverdue    Boolean      @default(false)
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  activityLogs  ActivityLog[]
+  notifications Notification[]
+
+  // Queried on every task list (status/priority/due-date filters) and on
+  // "my tasks" lookups for developers — both are hot paths.
+  @@index([projectId])
+  @@index([assignedToId])
+  @@index([status])
+  @@index([priority])
+  @@index([dueDate])
+  @@index([isOverdue])
+}
+
+// Append-only log. Never derived from Task's current state, so history
+// survives even if a task is later reassigned or deleted.
+model ActivityLog {
+  id         String   @id @default(uuid())
+  taskId     String
+  task       Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  projectId  String
+  project    Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  userId     String
+  user       User     @relation(fields: [userId], references: [id])
+  fromStatus TaskStatus?
+  toStatus   TaskStatus
+  message    String
+  createdAt  DateTime @default(now())
+
+  // projectId+createdAt backs "last 20 events for project X" catchup queries;
+  // createdAt alone backs the admin global feed.
+  @@index([projectId, createdAt])
+  @@index([createdAt])
+}
+
+model Notification {
+  id        String           @id @default(uuid())
+  userId    String
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      NotificationType
+  message   String
+  taskId    String?
+  task      Task?            @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  read      Boolean          @default(false)
+  createdAt DateTime         @default(now())
+
+  @@index([userId, read])
+}

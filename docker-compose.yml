@@ -1,0 +1,40 @@
+version: "3.9"
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: velozity
+      POSTGRES_PASSWORD: velozity
+      POSTGRES_DB: velozity_dashboard
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U velozity"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build: ./backend
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: "postgresql://velozity:velozity@db:5432/velozity_dashboard?schema=public"
+      PORT: 4000
+      NODE_ENV: production
+      CORS_ORIGIN: "http://localhost:5173"
+      JWT_ACCESS_SECRET: "dev-access-secret-change-me-in-prod"
+      JWT_REFRESH_SECRET: "dev-refresh-secret-change-me-in-prod"
+      ACCESS_TOKEN_TTL: "15m"
+      REFRESH_TOKEN_TTL_DAYS: 7
+      COOKIE_SECURE: "false"
+    ports:
+      - "4000:4000"
+
+volumes:
+  pgdata:
