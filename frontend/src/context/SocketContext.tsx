@@ -1,9 +1,7 @@
 import React, { createContext, useContext, useEffect, useRef, useState } from "react";
 import { io, Socket } from "socket.io-client";
 import { useAuth } from "./AuthContext";
-import { getAccessToken } from "../api/client";
-
-const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:4000";
+import { getAccessToken, API_URL } from "../api/client";
 
 interface SocketState {
   socket: Socket | null;

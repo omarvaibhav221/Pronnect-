@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { useAuth } from "../context/AuthContext";
+import { API_URL } from "../api/client";
 
 export default function Login() {
   const { login } = useAuth();
@@ -16,7 +17,7 @@ export default function Login() {
       await login(email, password);
     } catch (err: any) {
       if (!err?.response) {
-        setError("Cannot connect to backend server (http://localhost:4000). Please make sure the backend is running!");
+        setError(`Cannot connect to backend server (${API_URL}). Please make sure the backend is running!`);
       } else if (err.response.data?.error?.details?.includes("Can't reach database server")) {
         setError("Backend is running, but cannot connect to PostgreSQL database. Please ensure PostgreSQL is running and configured in backend/.env");
       } else {
