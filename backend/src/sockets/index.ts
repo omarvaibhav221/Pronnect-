@@ -103,7 +103,7 @@ async function canAccessProject(user: AccessTokenPayload, projectId: string): Pr
   return Boolean(task);
 }
 
-async function fetchCatchupEvents(user: AccessTokenPayload, projectId?: string) {
+export async function fetchCatchupEvents(user: AccessTokenPayload, projectId?: string) {
   if (user.role === "ADMIN") {
     return prisma.activityLog.findMany({
       where: projectId ? { projectId } : undefined,

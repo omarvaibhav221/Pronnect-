@@ -1,39 +1,69 @@
 import React, { useEffect, useState } from "react";
 import { useSocket } from "../context/SocketContext";
 import { ActivityEvent } from "../types";
+import { api } from "../api/client";
 
 export default function ActivityFeed({ projectId }: { projectId?: string }) {
   const { socket } = useSocket();
   const [events, setEvents] = useState<ActivityEvent[]>([]);
 
-  // On mount and on every reconnect, pull the last 20 events from the
-  // database so a user who was offline (or just opened this view) is
-  // caught up, rather than starting from an empty in-memory list.
   useEffect(() => {
-    if (!socket) return;
+    let cancelled = false;
 
-    function catchup() {
-      socket!.emit("activity:catchup", { projectId }, (fetched: ActivityEvent[]) => {
-        setEvents(fetched);
-      });
+    async function fetchActivity() {
+      try {
+        const url = projectId ? `/api/dashboard/activity?projectId=${projectId}` : "/api/dashboard/activity";
+        const res = await api.get(url);
+        if (!cancelled && Array.isArray(res.data)) {
+          setEvents(res.data);
+        }
+      } catch {
+        // Fallback / offline
+      }
     }
 
-    if (projectId) {
-      socket.emit("project:watch", projectId);
-    }
-    catchup();
-    socket.on("connect", catchup);
+    fetchActivity();
 
-    function onNew(evt: ActivityEvent) {
-      if (projectId && evt.projectId !== projectId) return;
-      setEvents((prev) => (prev.some((e) => e.id === evt.id) ? prev : [evt, ...prev].slice(0, 40)));
+    // Poll periodically if WebSockets are unavailable or disconnected
+    const interval = setInterval(() => {
+      if (!socket || !socket.connected) {
+        fetchActivity();
+      }
+    }, 8000);
+
+    if (socket) {
+      function catchup() {
+        socket!.emit("activity:catchup", { projectId }, (fetched: ActivityEvent[]) => {
+          if (!cancelled && Array.isArray(fetched)) {
+            setEvents(fetched);
+          }
+        });
+      }
+
+      if (projectId) {
+        socket.emit("project:watch", projectId);
+      }
+      catchup();
+      socket.on("connect", catchup);
+
+      function onNew(evt: ActivityEvent) {
+        if (projectId && evt.projectId !== projectId) return;
+        setEvents((prev) => (prev.some((e) => e.id === evt.id) ? prev : [evt, ...prev].slice(0, 40)));
+      }
+      socket.on("activity:new", onNew);
+
+      return () => {
+        cancelled = true;
+        clearInterval(interval);
+        socket.off("connect", catchup);
+        socket.off("activity:new", onNew);
+        if (projectId) socket.emit("project:unwatch", projectId);
+      };
     }
-    socket.on("activity:new", onNew);
 
     return () => {
-      socket.off("connect", catchup);
-      socket.off("activity:new", onNew);
-      if (projectId) socket.emit("project:unwatch", projectId);
+      cancelled = true;
+      clearInterval(interval);
     };
   }, [socket, projectId]);
 

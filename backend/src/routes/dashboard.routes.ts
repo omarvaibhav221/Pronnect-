@@ -1,10 +1,20 @@
 import { Router } from "express";
 import { requireAuth, requireRole } from "../middleware/auth";
 import { prisma } from "../config/prisma";
-import { getOnlineCount } from "../sockets";
+import { getOnlineCount, fetchCatchupEvents } from "../sockets";
 
 const router = Router();
 router.use(requireAuth);
+
+router.get("/activity", async (req, res, next) => {
+  try {
+    const projectId = typeof req.query.projectId === "string" ? req.query.projectId : undefined;
+    const events = await fetchCatchupEvents(req.user!, projectId);
+    res.json(events);
+  } catch (err) {
+    next(err);
+  }
+});
 
 router.get("/admin", requireRole("ADMIN"), async (_req, res, next) => {
   try {
