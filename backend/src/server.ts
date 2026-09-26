@@ -16,7 +16,28 @@ import dashboardRoutes from "./routes/dashboard.routes";
 const app = express();
 const httpServer = http.createServer(app);
 
-app.use(cors({ origin: env.corsOrigin, credentials: true }));
+const allowedOrigins = [
+  "http://localhost:5173",
+  "https://pronnect-frontend-xi.vercel.app",
+  ...(process.env.CORS_ORIGIN ? process.env.CORS_ORIGIN.split(",").map((s) => s.trim()) : []),
+];
+
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      if (!origin) return callback(null, true);
+      if (
+        allowedOrigins.includes(origin) ||
+        origin.endsWith(".vercel.app") ||
+        origin.startsWith("http://localhost:")
+      ) {
+        return callback(null, true);
+      }
+      return callback(null, true);
+    },
+    credentials: true,
+  })
+);
 app.use(cookieParser());
 app.use(express.json());
 

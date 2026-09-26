@@ -8,10 +8,11 @@ import { env } from "../config/env";
 const REFRESH_COOKIE = "refreshToken";
 
 function setRefreshCookie(res: Response, token: string, expires: Date) {
+  const isProduction = env.nodeEnv === "production" || !!process.env.VERCEL;
   res.cookie(REFRESH_COOKIE, token, {
     httpOnly: true, // never readable by client JS — mitigates XSS token theft
-    secure: env.cookieSecure, // true in production (HTTPS only)
-    sameSite: "lax",
+    secure: isProduction || env.cookieSecure, // true in production (HTTPS only, required for sameSite: none)
+    sameSite: isProduction ? "none" : "lax", // 'none' required for cross-domain cookies between frontend and backend on Vercel
     expires,
     path: "/api/auth", // only sent to auth endpoints
   });
@@ -79,7 +80,12 @@ export async function logout(req: Request, res: Response, next: NextFunction) {
     if (token) {
       await prisma.refreshToken.updateMany({ where: { token }, data: { revoked: true } });
     }
-    res.clearCookie(REFRESH_COOKIE, { path: "/api/auth" });
+    const isProduction = env.nodeEnv === "production" || !!process.env.VERCEL;
+    res.clearCookie(REFRESH_COOKIE, {
+      path: "/api/auth",
+      sameSite: isProduction ? "none" : "lax",
+      secure: isProduction || env.cookieSecure,
+    });
     res.status(204).send();
   } catch (err) {
     next(err);
